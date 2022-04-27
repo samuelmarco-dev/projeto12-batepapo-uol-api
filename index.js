@@ -3,6 +3,8 @@ import express, {json} from 'express';
 import cors from 'cors';
 import chalk from 'chalk';
 
+
+import dayjs from 'dayjs';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -47,7 +49,7 @@ appServer.post('/participants', (req, res)=>{
                                 to: 'Todos',
                                 text: 'entra na sala...', 
                                 type: 'status', 
-                                time: 'HH:MM:SS'
+                                time: `${dayjs(Date.now()).format('HH:mm:ss')}`
                             });
                             console.log('nome em enviarEntrada', name);
 

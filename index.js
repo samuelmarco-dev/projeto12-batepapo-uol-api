@@ -263,6 +263,61 @@ appServer.get('/messages', (req, res)=>{
     });
 });
 
+appServer.post('/status', (req, res)=>{
+    const {user} = req.headers;
+    console.log('user', user);
+
+    if(!user){
+        console.log('Para visualizar o status é necessário informar o usuário');
+        res.sendStatus(422);
+        return;
+    }
+    if(user){
+        console.log('Executando consulta de status');
+        const conexaoListaParticipantes = new MongoClient(process.env.MONGO_CONECTION);
+        conexaoListaParticipantes.connect().then(conexao=>{
+            const db = conexao.db('API-batePapoUol').collection('participants');
+            const participante = db.findOne({name: user});
+
+            participante.then(result=>{
+                if(result){
+                    console.log('result', result);
+                    const promise = db.updateOne({name: user}, {$set: {lastStatus: Date.now()}});
+                    promise.then(result=>{
+                        console.log('promise', result);
+                        res.sendStatus(200);
+                        conexaoListaParticipantes.close();
+                        return;
+                    });
+                    promise.catch(()=>{
+                        console.log('catch promise');
+                        res.sendStatus(500);
+                        conexaoListaParticipantes.close();
+                    });
+                }
+                if(!result){
+                    console.log('Participante não existe');
+                    res.sendStatus(404);
+                    conexaoListaParticipantes.close();
+                    return;
+                }
+            });
+            participante.catch(()=>{
+                console.log('catch participante');
+                res.sendStatus(500);
+                conexaoListaParticipantes.close();
+            });
+            
+        }).catch(()=>{
+            console.log('catch conexão');
+            res.sendStatus(500);
+            conexaoListaParticipantes.close();
+        });
+        return;
+    }
+    // const promise = db.updateOne({name: user}, {$set: {status: status}});
+});
+
 appServer.listen(5000, () =>{
     console.log(chalk.green('Servidor rodando na porta: 5000'));
 });

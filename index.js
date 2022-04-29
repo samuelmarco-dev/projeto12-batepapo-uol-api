@@ -24,74 +24,54 @@ appServer.post('/participants', (req, res)=>{
     if(name){
         console.log('nome informado');
         const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
-        conexaoMongo.connect().then(conexao=>{
+        try {
+            const conexao = await conexaoMongo.connect();
             const db = conexao.db('API-batePapoUol').collection('participants');
-            const participanteExistente = db.findOne({name: name});
+            const participanteExistente = await db.findOne({name: name});
+            console.log('participanteExiste', participanteExistente);
 
-            participanteExistente.then(result=>{
-                console.log('promise participanteExistente');
-                console.log(participanteExistente, result);
-                if(result){
-                    console.log('participante já existe');
-                    res.sendStatus(409);
+            if(participanteExistente){
+                console.log('participante já existe');
+                res.sendStatus(409);
+                conexaoMongo.close();
+                return;
+            }
+            if(!participanteExistente){
+                console.log('participante não existe');
+                const enviarMensagem = await db.insertOne({name, lastStatus: Date.now()});
+                console.log('enviarMensagem', enviarMensagem);
+            
+                const conexaoSala = new MongoClient(process.env.MONGO_CONECTION);
+                try {
+                    const conexaoMensagensDb = await conexaoSala.connect();
+                    const dbMensagens = conexaoMensagensDb.db('API-batePapoUol').collection('messages');
+                    const enviarEntrada = await dbMensagens.insertOne({
+                        from: name, 
+                        to: 'Todos',
+                        text: 'entra na sala...', 
+                        type: 'status', 
+                        time: `${dayjs(Date.now()).format('HH:mm:ss')}`
+                    });
+                    console.log('nome em enviarEntrada', name);
+                    console.log('enviarEntrada', enviarEntrada);
+                    res.sendStatus(201);
+                    conexaoSala.close();
                     conexaoMongo.close();
                     return;
                 }
-                if(!result){
-                    console.log('participante não existe');
-                    const promise = db.insertOne({name, lastStatus: Date.now()});
-                    promise.then(result=>{
-                        const conexaoSala = new MongoClient(process.env.MONGO_CONECTION);
-                        conexaoSala.connect().then(conexao=>{
-                            const db = conexao.db('API-batePapoUol').collection('messages');
-                            const enviarEntrada = db.insertOne({
-                                from: name, 
-                                to: 'Todos',
-                                text: 'entra na sala...', 
-                                type: 'status', 
-                                time: `${dayjs(Date.now()).format('HH:mm:ss')}`
-                            });
-                            console.log('nome em enviarEntrada', name);
-
-                            enviarEntrada.then(result=>{
-                                console.log('promise enviarEntrada');
-                                console.log(enviarEntrada, result);
-                                
-                                console.log('promise insertOne');
-                                console.log(promise, result);
-                                res.sendStatus(201);
-                                conexaoSala.close();
-                            });
-                            enviarEntrada.catch(()=>{
-                                res.sendStatus(500);
-                                conexaoSala.close();
-                            });
-                        }).catch(()=>{
-                            console.log('catch conexaoSala');
-                            res.sendStatus(500);
-                            conexaoSala.close();
-                        });
-                        conexaoMongo.close();
-                    });
-                    promise.catch(err=>{
-                        console.log('catch insertOne');
-                        res.sendStatus(500);
-                        conexaoMongo.close();
-                    });
+                catch(err){
+                    console.log(err);
+                    res.sendStatus(500);
+                    conexaoSala.close();
+                    conexaoMongo.close();
                     return;
                 }
-            });
-            participanteExistente.catch(()=>{
-                console.log('catch participanteExistente');
-                res.sendStatus(500);
-                conexaoMongo.close();
-            });
-
-        }).catch(()=>{
-            console.log('catch conexão');
-            res.send(500);
+            }
+        } catch (error) {
+            console.log(error);
+            res.sendStatus(500);
             conexaoMongo.close();
-        });
+        }
     }
 });
 
@@ -310,7 +290,6 @@ appServer.post('/status', (req, res)=>{
         });
         return;
     }
-    // const promise = db.updateOne({name: user}, {$set: {status: status}});
 });
 
 setInterval(()=>{

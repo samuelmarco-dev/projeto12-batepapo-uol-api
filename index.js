@@ -1,6 +1,6 @@
 import express, {json} from 'express';
 import cors from 'cors';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 
 import chalk from 'chalk';
 import dayjs from 'dayjs';
@@ -264,6 +264,53 @@ appServer.post('/status', async (req, res)=>{
             res.sendStatus(500);
             conexaoListaParticipantes.close();
             return;
+        }
+    }
+});
+
+appServer.delete('/messages/:id', async (req, res)=>{
+    const {user} = req.headers;
+    const {id} = req.params;
+
+    if(!user || !id){
+        console.log('Para deletar uma mensagem é necessário informar o usuário e o id');
+        res.sendStatus(422);
+        return;
+    }
+    if(user && id){
+        console.log('Consultando mensagem para ser apagada');
+        const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
+        try {
+            const conexao = await conexaoMongo.connect();
+            const db = conexao.db('API-batePapoUol').collection('messages');
+            const mensagem = await db.findOne({_id: new ObjectId(id)});
+            
+            if(mensagem){
+                console.log('mensagem', mensagem);
+                if(mensagem.from === user || mensagem.to === user){
+                    const deletarMensagem = await db.deleteOne({_id: new ObjectId(id)});
+                    console.log('deletarMensagem', deletarMensagem);
+                    res.sendStatus(200);
+                    conexaoMongo.close();
+                    return;
+                }
+                if(mensagem.from !== user && mensagem.to !== user){
+                    console.log('Usuário não tem permissão para apagar mensagem');
+                    res.sendStatus(401);
+                    conexaoMongo.close();
+                    return;
+                }
+            }
+            if(!mensagem){
+                console.log('Mensagem não existe');
+                res.sendStatus(404);
+                conexaoMongo.close();
+                return;
+            }
+        } catch (error) {
+            console.log(error);
+            res.sendStatus(500);
+            conexaoMongo.close();
         }
     }
 });

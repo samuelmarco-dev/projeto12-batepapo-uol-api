@@ -12,7 +12,7 @@ const appServer = express();
 appServer.use(cors());
 appServer.use(json());
 
-appServer.post('/participants', (req, res)=>{
+appServer.post('/participants', async (req, res)=>{
     const {name} = req.body; 
     console.log("nome:", name);
 
@@ -91,7 +91,7 @@ appServer.get('/participants', async (req, res)=>{
     }
 });
 
-appServer.post('/messages', (req, res)=>{
+appServer.post('/messages', async (req, res)=>{
     const {to, text, type} = req.body;
     const {user} = req.headers;
      
@@ -106,59 +106,48 @@ appServer.post('/messages', (req, res)=>{
         if(type === 'message' || type === 'private_message'){
             console.log('type: message ou private_message');
             console.log(to, user, text, type);
+
             const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
-            conexaoMongo.connect().then(conexao=>{
+            try {
+                const conexao = await conexaoMongo.connect();
                 const db = conexao.db('API-batePapoUol').collection('participants');
-                const existeUser = db.findOne({name: user});
+                const existeUser = await db.findOne({name: user});
 
-                existeUser.then(result=>{
-                    if(result){
-                        console.log('promise existeUser');
-                        console.log(existeUser, result);
-                        const conexaoSala = new MongoClient(process.env.MONGO_CONECTION);
-                        conexaoSala.connect().then(conexao=>{
-                            const db = conexao.db('API-batePapoUol').collection('messages');
-                            const promiseMensagem = db.insertOne({
-                                from: user, to, text, type, time: `${dayjs(Date.now()).format('HH:mm:ss')}`
-                            });
-
-                            promiseMensagem.then(result=>{
-                                console.log('promiseMensagem');
-                                console.log(promiseMensagem, result);
-                                res.sendStatus(201);
-                                conexaoSala.close();
-                                return;
-                            });
-                            promiseMensagem.catch(()=>{
-                                console.log('catch promiseMensagem');
-                                res.sendStatus(500);
-                                conexaoSala.close();
-                            });
-
-                        }).catch(()=>{
-                            console.log('catch conexaoSala');
-                            res.sendStatus(500);
-                            conexaoSala.close();
+                if(existeUser){
+                    console.log('existeUser');
+                    const conexaoSala = new MongoClient(process.env.MONGO_CONECTION);
+                    try{
+                        const conexaoMensagens = await conexaoSala.connect();
+                        const dbMensagens = conexaoMensagens.db('API-batePapoUol').collection('messages');
+                        const enviarMensagem = await dbMensagens.insertOne({
+                            from: user, to, text, type, time: `${dayjs(Date.now()).format('HH:mm:ss')}`
                         });
-                    }
-                    if(!result){
-                        console.log('user não existe');
-                        res.sendStatus(422);
+                        console.log('enviarMensagem', enviarMensagem);
+                        res.sendStatus(201);
+                        conexaoSala.close();
                         conexaoMongo.close();
                         return;
                     }
-                    
-                });
-                existeUser.catch(()=>{
-                    console.log('catch existeUser');
-                    res.sendStatus(500);
+                    catch(err){
+                        console.log(err);
+                        res.sendStatus(500);
+                        conexaoSala.close();
+                        conexaoMongo.close();
+                        return;
+                    }
+                }
+                if(!existeUser){
+                    console.log('não existeUser');
+                    res.sendStatus(422);
                     conexaoMongo.close();
-                });
-            }).catch(()=>{
+                    return;
+                }
+            }
+            catch(err){
                 console.log('catch conexão');
                 res.sendStatus(500);
                 conexaoMongo.close();
-            });
+            }
         }else{
             console.log('tipo de mensagem inválida');
             res.sendStatus(422);

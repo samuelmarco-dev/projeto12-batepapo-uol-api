@@ -227,7 +227,7 @@ appServer.get('/messages', async (req, res)=>{
     }
 });
 
-appServer.post('/status', (req, res)=>{
+appServer.post('/status', async (req, res)=>{
     const {user} = req.headers;
     console.log('user', user);
 
@@ -239,127 +239,99 @@ appServer.post('/status', (req, res)=>{
     if(user){
         console.log('Executando consulta de status');
         const conexaoListaParticipantes = new MongoClient(process.env.MONGO_CONECTION);
-        conexaoListaParticipantes.connect().then(conexao=>{
+        try {
+            const conexao = await conexaoListaParticipantes.connect();
             const db = conexao.db('API-batePapoUol').collection('participants');
-            const participante = db.findOne({name: user});
+            const participante = await db.findOne({name: user});
 
-            participante.then(result=>{
-                if(result){
-                    console.log('result', result);
-                    const promise = db.updateOne({name: user}, {$set: {lastStatus: Date.now()}});
-                    promise.then(result=>{
-                        console.log('promise', result);
-                        res.sendStatus(200);
-                        conexaoListaParticipantes.close();
-                        return;
-                    });
-                    promise.catch(()=>{
-                        console.log('catch promise');
-                        res.sendStatus(500);
-                        conexaoListaParticipantes.close();
-                    });
-                }
-                if(!result){
-                    console.log('Participante não existe');
-                    res.sendStatus(404);
-                    conexaoListaParticipantes.close();
-                    return;
-                }
-            });
-            participante.catch(()=>{
-                console.log('catch participante');
-                res.sendStatus(500);
-                conexaoListaParticipantes.close();
-            });
-            
-        }).catch(()=>{
-            console.log('catch conexão');
-            res.sendStatus(500);
-            conexaoListaParticipantes.close();
-        });
-        return;
-    }
-});
-
-setInterval(()=>{
-    const conexaoListaParticipantes = new MongoClient(process.env.MONGO_CONECTION);
-    conexaoListaParticipantes.connect().then(conexao=>{
-        const db = conexao.db('API-batePapoUol').collection('participants');
-        const promise = db.find().toArray();
-
-        promise.then(result=>{
-            console.log('promise consulta em Array de participantes', result);
-            if(result.length > 0){
-                const participantesColecao = [...result];
-                console.log('participantesColecao', participantesColecao);
-                const participantesOffline = participantesColecao.filter(participante=>{
-                    return (Date.now() - participante.lastStatus) > 10000;
-                });
-                console.log('participantes que podem estar offline', participantesOffline);
-                
-                if(participantesOffline.length > 0){
-                    const apagarParticipante = db.deleteMany({name: {$in: participantesOffline.map(participante=>{
-                        return participante.name;
-                    })}});
-                    apagarParticipante.then(result=>{
-                        console.log('apagarParticipante', result);
-                        const conexaoMensagens = new MongoClient(process.env.MONGO_CONECTION);
-                        conexaoMensagens.connect().then(conexaoDb=>{
-                            const arrClone = [...participantesOffline];
-                            console.log('arrClone', arrClone);
-                            const dbMensagemSaida = conexaoDb.db('API-batePapoUol').collection('messages');
-                            const promiseMensagemSaida = dbMensagemSaida.insertMany(arrClone.map(participante=>{
-                                return {
-                                    from: participante.name,
-                                    to: 'Todos',
-                                    text: 'sai da sala...',
-                                    time: `${dayjs(Date.now()).format('HH:mm:ss')}`
-                                }
-                            }));
-                            console.log('promiseMensagemSaida', promiseMensagemSaida);
-    
-                            promiseMensagemSaida.then(result=>{
-                                console.log('promiseMensagemSaida na promise', result);
-                                conexaoListaParticipantes.close();
-                                return;
-                            }).catch(()=>{
-                                console.log('catch promiseMensagemSaida');
-                                conexaoListaParticipantes.close();
-                            });
-                            
-                        }).catch(()=>{
-                            console.log('catch conexão');
-                            res.sendStatus(500);
-                            conexaoMensagens.close();
-                        });
-                    });
-                    apagarParticipante.catch(()=>{
-                        console.log('catch promise');
-                        conexaoListaParticipantes.close();
-                    });
-                }
-
-                if(participantesOffline.length === 0){
-                    console.log('Nenhum participante que pode estar offline');
-                    conexaoListaParticipantes.close();
-                    return;
-                }
-            }
-            if(result.length === 0){
-                console.log('Não há participantes');
+            if(participante){
+                console.log('participante', participante);
+                const atualizarParticipante = await db.updateOne({name: user}, {$set: {lastStatus: Date.now()}});
+                console.log('atualizarParticipante', atualizarParticipante);
+                res.sendStatus(200);
                 conexaoListaParticipantes.close();
                 return;
             }
-        });
-        promise.catch(()=>{
-            console.log('catch promise Array participants');
+            if(!participante){
+                console.log('Participante não existe');
+                res.sendStatus(404);
+                conexaoListaParticipantes.close();
+                return;
+            }
+        }
+        catch(err){
+            console.log(err);
+            res.sendStatus(500);
             conexaoListaParticipantes.close();
-        });
+            return;
+        }
+    }
+});
 
-    }).catch(()=>{
-        console.log('catch conexão');
+setInterval( async ()=>{
+    const conexaoListaParticipantes = new MongoClient(process.env.MONGO_CONECTION);
+    try{
+        const conexao = await conexaoListaParticipantes.connect();
+        const db = conexao.db('API-batePapoUol').collection('participants');
+        const listaParticipantesAtivos = await db.find().toArray();
+        console.log('Consulta listaParticipantesAtivos', listaParticipantesAtivos);
+
+        if(listaParticipantesAtivos.length > 0){
+            const participantesColecao = [...listaParticipantesAtivos];
+            console.log('participantesColecao', participantesColecao);
+            const participantesOffline = participantesColecao.filter(participante=>{
+                return (Date.now() - participante.lastStatus) > 10000;
+            });
+            console.log('participantes que podem estar offline', participantesOffline);
+
+            if(participantesOffline.length > 0){
+                const apagarParticipante = await db.deleteMany({name: {$in: participantesOffline.map(participante=>{
+                    return participante.name;
+                })}});
+                console.log('apagarParticipante', apagarParticipante);
+                const conexaoMensagens = new MongoClient(process.env.MONGO_CONECTION);
+                try{
+                    const conexaoDb = await conexaoMensagens.connect();
+                    const arrClone = [...participantesOffline];
+                    console.log('arrClone', arrClone);
+
+                    const dbMensagemSaida = conexaoDb.db('API-batePapoUol').collection('messages');
+                    const mensagemSaidaSala = await dbMensagemSaida.insertMany(arrClone.map(participante=>{
+                        return {
+                            from: participante.name,
+                            to: 'Todos',
+                            text: 'sai da sala...',
+                            time: `${dayjs(Date.now()).format('HH:mm:ss')}`
+                        }
+                    }));
+                    console.log('mensagemSaidaSala', mensagemSaidaSala);
+                    conexaoMensagens.close();
+                    conexaoListaParticipantes.close();
+                    return;
+                }
+                catch(err){
+                    console.log(err);
+                    conexaoMensagens.close();
+                    conexaoListaParticipantes.close();
+                    return;
+                }
+            }
+            if(participantesOffline.length === 0){
+                console.log('Não há participantes offline');
+                conexaoListaParticipantes.close();
+                return;
+            }
+        }
+        if(listaParticipantesAtivos.length === 0){
+            console.log('Não existe participantes ativos');
+            conexaoListaParticipantes.close();
+            return;
+        }
+    }
+    catch(err){
+        console.log(err);
         conexaoListaParticipantes.close();
-    });
+    }
 }, 15000);
 
 appServer.listen(5000, () =>{

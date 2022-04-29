@@ -340,23 +340,34 @@ setInterval(()=>{
                     })}});
                     apagarParticipante.then(result=>{
                         console.log('apagarParticipante', result);
-                        const dbMensagemSaida = conexao.db('API-batePapoUol').collection('messages');
-                        const promiseMensagemSaida = dbMensagemSaida.insertMany(participantesOffline.map(participante=>{
-                            return {
-                                from: `${participante.name}`,
-                                to: 'Todos',
-                                text: 'sai da sala...',
-                                time: `${dayjs(Date.now()).format('HH:mm:ss')}`
-                            }
-                        }));
-
-                        promiseMensagemSaida.then(result=>{
-                            console.log('promiseMensagemSaida', result);
-                            conexaoListaParticipantes.close();
-                            return;
+                        const conexaoMensagens = new MongoClient(process.env.MONGO_CONECTION);
+                        conexaoMensagens.connect().then(conexaoDb=>{
+                            const arrClone = [...participantesOffline];
+                            console.log('arrClone', arrClone);
+                            const dbMensagemSaida = conexaoDb.db('API-batePapoUol').collection('messages');
+                            const promiseMensagemSaida = dbMensagemSaida.insertMany(arrClone.map(participante=>{
+                                return {
+                                    from: participante.name,
+                                    to: 'Todos',
+                                    text: 'sai da sala...',
+                                    time: `${dayjs(Date.now()).format('HH:mm:ss')}`
+                                }
+                            }));
+                            console.log('promiseMensagemSaida', promiseMensagemSaida);
+    
+                            promiseMensagemSaida.then(result=>{
+                                console.log('promiseMensagemSaida na promise', result);
+                                conexaoListaParticipantes.close();
+                                return;
+                            }).catch(()=>{
+                                console.log('catch promiseMensagemSaida');
+                                conexaoListaParticipantes.close();
+                            });
+                            
                         }).catch(()=>{
-                            console.log('catch promiseMensagemSaida');
-                            conexaoListaParticipantes.close();
+                            console.log('catch conexão');
+                            res.sendStatus(500);
+                            conexaoMensagens.close();
                         });
                     });
                     apagarParticipante.catch(()=>{
@@ -364,6 +375,7 @@ setInterval(()=>{
                         conexaoListaParticipantes.close();
                     });
                 }
+
                 if(participantesOffline.length === 0){
                     console.log('Nenhum participante que pode estar offline');
                     conexaoListaParticipantes.close();
@@ -385,7 +397,7 @@ setInterval(()=>{
         console.log('catch conexão');
         conexaoListaParticipantes.close();
     });
-}, 25000);
+}, 15000);
 
 appServer.listen(5000, () =>{
     console.log(chalk.green('Servidor rodando na porta: 5000'));

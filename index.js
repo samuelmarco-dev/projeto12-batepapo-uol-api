@@ -187,7 +187,7 @@ appServer.post('/messages', (req, res)=>{
     }
 });
 
-appServer.get('/messages', (req, res)=>{
+appServer.get('/messages', async (req, res)=>{
     const {limit} = req.query;
     const {user} = req.headers;
     
@@ -196,65 +196,66 @@ appServer.get('/messages', (req, res)=>{
         res.sendStatus(422);
         return;
     }
-    
-    const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
-    conexaoMongo.connect().then(conexao=>{
-        const db = conexao.db('API-batePapoUol').collection('messages');
-        const promise = db.find().toArray();
 
-        promise.then(result=>{
-            console.log('promise consulta mensagens', result);
-            if(parseInt(limit) === 0 || parseInt(limit) < 0){
-                console.log('limit menor ou igual a zero');
-                res.send(result);
-                conexaoMongo.close();
-                return;
-            }
-            if(parseInt(limit) < result.length){
-                const ultimasMensagens = [...result].splice(result.length - limit, result.length);
-                if(user){
-                    const mensagensAoUsuario = ultimasMensagens.filter(mensagem=>{
-                        return mensagem.to === "Todos" || mensagem.to === user || 
-                        mensagem.from === user;
-                    });
-                    console.log('ultimas mensagens', ultimasMensagens);
-                    res.send(mensagensAoUsuario);
-                    conexaoMongo.close();
-                    return;
-                }
-            }
-            if(limit){
-                const mensagensLimitadas = [...result].slice(0, limit);
-                if(user){
-                    const mensagensAoUsuario = mensagensLimitadas.filter(mensagem=>{
-                        return mensagem.to === "Todos" || mensagem.to === user || 
-                        mensagem.from === user;
-                    });
-                    console.log('mensagensLimitadas', mensagensLimitadas);
-                    res.send(mensagensAoUsuario);
-                    conexaoMongo.close();
-                    return;
-                }
-            }
-            if(!limit && user){
-                const mensagensAoUsuario = result.filter(mensagem=>{
+    try {
+        const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
+        const conexao = await conexaoMongo.connect();
+        const db = conexao.db('API-batePapoUol').collection('messages');
+        const mensagens = await db.find().toArray();
+
+        if(parseInt(limit) === 0 || parseInt(limit) < 0){
+            console.log('limit menor ou igual a zero');
+            res.send(mensagens);
+            conexaoMongo.close();
+            return;
+        }
+        if(parseInt(limit) < mensagens.length){
+            const ultimasMensagens = [...mensagens].splice(mensagens.length - limit, mensagens.length);
+            if(user){
+                const mensagensAoUsuario = ultimasMensagens.filter(mensagem=>{
                     return mensagem.to === "Todos" || mensagem.to === user || 
                     mensagem.from === user;
                 });
-                console.log('ultimasMensagens', result);
+                console.log('ultimas mensagens', ultimasMensagens);
                 res.send(mensagensAoUsuario);
                 conexaoMongo.close();
                 return;
             }
-        }).catch(()=>{
-            res.sendStatus(500);
+        }
+        if (limit) {
+            const mensagensLimitadas = [...mensagens].splice(0, limit);
+            if (user) {
+                const mensagensAoUsuario = mensagensLimitadas.filter(mensagem => {
+                    return (
+                        mensagem.to === "Todos" ||
+                        mensagem.to === user ||
+                        mensagem.from === user
+                    );
+                });
+                console.log("mensagensLimitadas", mensagensLimitadas);
+                res.send(mensagensAoUsuario);
+                conexaoMongo.close();
+                return;
+            }
+        }
+        if (!limit && user) {
+            const mensagensAoUsuario = mensagens.filter(mensagem => {
+                return (
+                    mensagem.to === "Todos" ||
+                    mensagem.to === user ||
+                    mensagem.from === user
+                );
+            });
+            console.log("ultimasMensagens", mensagens);
+            res.send(mensagensAoUsuario);
             conexaoMongo.close();
-        });
-    }).catch(()=>{
-        console.log('catch conexão');
+            return;
+        }
+    } catch (error) {
+        console.log(error);
         res.sendStatus(500);
         conexaoMongo.close();
-    });
+    }
 });
 
 appServer.post('/status', (req, res)=>{

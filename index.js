@@ -95,26 +95,20 @@ appServer.post('/participants', (req, res)=>{
     }
 });
 
-appServer.get('/participants', (req, res)=>{
+appServer.get('/participants', async (req, res)=>{
     const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
-    
-    conexaoMongo.connect().then(conexao=>{
+    try{
+        const conexao = await conexaoMongo.connect();
         const db = conexao.db('API-batePapoUol').collection('participants');
-        const promise = db.find().toArray();
-
-        promise.then(result=>{
-            console.log('promise consulta participantes');
-            res.send(result);
-            conexaoMongo.close();
-        }).catch(()=>{
-            res.sendStatus(500);
-            conexaoMongo.close();
-        });
-    }).catch(()=>{
+        const participantes = await db.find().toArray();
+        res.send(participantes);
+        conexaoMongo.close();
+    }
+    catch(err){
         console.log('catch conexão');
         res.sendStatus(500);
         conexaoMongo.close();
-    });
+    }
 });
 
 appServer.post('/messages', (req, res)=>{

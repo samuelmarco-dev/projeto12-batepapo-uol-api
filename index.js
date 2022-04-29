@@ -318,6 +318,75 @@ appServer.post('/status', (req, res)=>{
     // const promise = db.updateOne({name: user}, {$set: {status: status}});
 });
 
+setInterval(()=>{
+    const conexaoListaParticipantes = new MongoClient(process.env.MONGO_CONECTION);
+    conexaoListaParticipantes.connect().then(conexao=>{
+        const db = conexao.db('API-batePapoUol').collection('participants');
+        const promise = db.find().toArray();
+
+        promise.then(result=>{
+            console.log('promise consulta em Array de participantes', result);
+            if(result.length > 0){
+                const participantesColecao = [...result];
+                console.log('participantesColecao', participantesColecao);
+                const participantesOffline = participantesColecao.filter(participante=>{
+                    return (Date.now() - participante.lastStatus) > 10000;
+                });
+                console.log('participantes que podem estar offline', participantesOffline);
+                
+                if(participantesOffline.length > 0){
+                    const apagarParticipante = db.deleteMany({name: {$in: participantesOffline.map(participante=>{
+                        return participante.name;
+                    })}});
+                    apagarParticipante.then(result=>{
+                        console.log('apagarParticipante', result);
+                        const dbMensagemSaida = conexao.db('API-batePapoUol').collection('messages');
+                        const promiseMensagemSaida = dbMensagemSaida.insertMany(participantesOffline.map(participante=>{
+                            return {
+                                from: `${participante.name}`,
+                                to: 'Todos',
+                                text: 'sai da sala...',
+                                time: `${dayjs(Date.now()).format('HH:mm:ss')}`
+                            }
+                        }));
+
+                        promiseMensagemSaida.then(result=>{
+                            console.log('promiseMensagemSaida', result);
+                            conexaoListaParticipantes.close();
+                            return;
+                        }).catch(()=>{
+                            console.log('catch promiseMensagemSaida');
+                            conexaoListaParticipantes.close();
+                        });
+                    });
+                    apagarParticipante.catch(()=>{
+                        console.log('catch promise');
+                        conexaoListaParticipantes.close();
+                    });
+                }
+                if(participantesOffline.length === 0){
+                    console.log('Nenhum participante que pode estar offline');
+                    conexaoListaParticipantes.close();
+                    return;
+                }
+            }
+            if(result.length === 0){
+                console.log('Não há participantes');
+                conexaoListaParticipantes.close();
+                return;
+            }
+        });
+        promise.catch(()=>{
+            console.log('catch promise Array participants');
+            conexaoListaParticipantes.close();
+        });
+
+    }).catch(()=>{
+        console.log('catch conexão');
+        conexaoListaParticipantes.close();
+    });
+}, 25000);
+
 appServer.listen(5000, () =>{
     console.log(chalk.green('Servidor rodando na porta: 5000'));
 });

@@ -1,6 +1,7 @@
 import express, {json} from 'express';
 import cors from 'cors';
 import { MongoClient, ObjectId } from 'mongodb';
+import joi from 'joi';
 
 import chalk from 'chalk';
 import dayjs from 'dayjs';
@@ -16,13 +17,19 @@ appServer.post('/participants', async (req, res)=>{
     const {name} = req.body; 
     console.log("nome:", name);
 
-    if(!name){
-        console.log('nome não informado');
+    const schemaName = joi.object({
+        name: joi.string().min(1).required()
+    });
+    const validacao = schemaName.validate({name: name}, {abortEarly: false});
+    console.log("validacao:", validacao);
+
+    if(validacao.error){
+        console.log('nome invalido', validacao.error.details);
         res.sendStatus(422);
         return;
     }
-    if(name){
-        console.log('nome informado');
+    if(validacao.value.name.length >= 1){
+        console.log('nome informado:', validacao.value.name);
         const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
         try {
             const conexao = await conexaoMongo.connect();
@@ -94,14 +101,23 @@ appServer.get('/participants', async (req, res)=>{
 appServer.post('/messages', async (req, res)=>{
     const {to, text, type} = req.body;
     const {user} = req.headers;
-     
-    if(!to || !text || !type || !user){
+
+    const schemaMensagem = joi.object({
+        to: joi.string().min(1).required(),
+        text: joi.string().min(1).required(),
+        type: joi.string().valid('message', 'private_message')
+    });
+    const validacao = schemaMensagem.validate({to, text, type}, {abortEarly: false});
+    console.log("validacao:", validacao);
+
+    if(validacao.error || !user){
         console.log('dados não informados');
         res.sendStatus(422);
         return;
     }
 
-    if(to && text && type && user){
+    if(validacao.value.to.length >= 1 && validacao.value.text.length >= 1 && (validacao.value.type === 'message' || 
+    validacao.value.type === 'private_message') && user){
         console.log('dados informados');
         if(type === 'message' || type === 'private_message'){
             console.log('type: message ou private_message');

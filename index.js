@@ -17,6 +17,11 @@ appServer.post('/participants', async (req, res)=>{
     const {name} = req.body; 
     console.log("nome:", name);
 
+    if(Number(name)){
+        res.sendStatus(422);
+        return;
+    } 
+
     const schemaName = joi.object({
         name: joi.string().min(1).required()
     });
@@ -40,7 +45,7 @@ appServer.post('/participants', async (req, res)=>{
             if(participanteExistente){
                 console.log('participante já existe');
                 res.sendStatus(409);
-                conexaoMongo.close();
+                await conexaoMongo.close();
                 return;
             }
             if(!participanteExistente){
@@ -62,22 +67,22 @@ appServer.post('/participants', async (req, res)=>{
                     console.log('nome em enviarEntrada', name);
                     console.log('enviarEntrada', enviarEntrada);
                     res.sendStatus(201);
-                    conexaoSala.close();
-                    conexaoMongo.close();
+                    await conexaoSala.close();
+                    await conexaoMongo.close();
                     return;
                 }
                 catch(err){
                     console.log(err);
                     res.sendStatus(500);
-                    conexaoSala.close();
-                    conexaoMongo.close();
+                    await conexaoSala.close();
+                    await conexaoMongo.close();
                     return;
                 }
             }
         } catch (error) {
             console.log(error);
             res.sendStatus(500);
-            conexaoMongo.close();
+            await conexaoMongo.close();
         }
     }
 });
@@ -89,18 +94,23 @@ appServer.get('/participants', async (req, res)=>{
         const db = conexao.db('API-batePapoUol').collection('participants');
         const participantes = await db.find().toArray();
         res.send(participantes);
-        conexaoMongo.close();
+        await conexaoMongo.close();
     }
     catch(err){
         console.log('catch conexão');
         res.sendStatus(500);
-        conexaoMongo.close();
+        await conexaoMongo.close();
     }
 });
 
 appServer.post('/messages', async (req, res)=>{
     const {to, text, type} = req.body;
     const {user} = req.headers;
+
+    if(Number(to) || Number(text) || Number(user)){
+        res.sendStatus(422);
+        return;
+    }
 
     const schemaMensagem = joi.object({
         to: joi.string().min(1).required(),
@@ -140,29 +150,29 @@ appServer.post('/messages', async (req, res)=>{
                         });
                         console.log('enviarMensagem', enviarMensagem);
                         res.sendStatus(201);
-                        conexaoSala.close();
-                        conexaoMongo.close();
+                        await conexaoSala.close();
+                        await conexaoMongo.close();
                         return;
                     }
                     catch(err){
                         console.log(err);
                         res.sendStatus(500);
-                        conexaoSala.close();
-                        conexaoMongo.close();
+                        await conexaoSala.close();
+                        await conexaoMongo.close();
                         return;
                     }
                 }
                 if(!existeUser){
                     console.log('não existeUser');
                     res.sendStatus(422);
-                    conexaoMongo.close();
+                    await conexaoMongo.close();
                     return;
                 }
             }
             catch(err){
                 console.log('catch conexão');
                 res.sendStatus(500);
-                conexaoMongo.close();
+                await conexaoMongo.close();
             }
         }else{
             console.log('tipo de mensagem inválida');
@@ -176,7 +186,7 @@ appServer.get('/messages', async (req, res)=>{
     const {limit} = req.query;
     const {user} = req.headers;
     
-    if(!user){
+    if(!user || Number(user)){
         console.log('Para visualizar as mensagens é necessário informar o usuário');
         res.sendStatus(422);
         return;
@@ -191,7 +201,7 @@ appServer.get('/messages', async (req, res)=>{
         if(parseInt(limit) === 0 || parseInt(limit) < 0){
             console.log('limit menor ou igual a zero');
             res.send(mensagens);
-            conexaoMongo.close();
+            await conexaoMongo.close();
             return;
         }
         if(parseInt(limit) < mensagens.length){
@@ -203,7 +213,7 @@ appServer.get('/messages', async (req, res)=>{
                 });
                 console.log('ultimas mensagens', ultimasMensagens);
                 res.send(mensagensAoUsuario);
-                conexaoMongo.close();
+                await conexaoMongo.close();
                 return;
             }
         }
@@ -212,14 +222,13 @@ appServer.get('/messages', async (req, res)=>{
             if (user) {
                 const mensagensAoUsuario = mensagensLimitadas.filter(mensagem => {
                     return (
-                        mensagem.to === "Todos" ||
-                        mensagem.to === user ||
+                        mensagem.to === "Todos" || mensagem.to === user ||
                         mensagem.from === user
                     );
                 });
                 console.log("mensagensLimitadas", mensagensLimitadas);
                 res.send(mensagensAoUsuario);
-                conexaoMongo.close();
+                await conexaoMongo.close();
                 return;
             }
         }
@@ -233,13 +242,13 @@ appServer.get('/messages', async (req, res)=>{
             });
             console.log("ultimasMensagens", mensagens);
             res.send(mensagensAoUsuario);
-            conexaoMongo.close();
+            await conexaoMongo.close();
             return;
         }
     } catch (error) {
         console.log(error);
         res.sendStatus(500);
-        conexaoMongo.close();
+        await conexaoMongo.close();
     }
 });
 
@@ -247,7 +256,7 @@ appServer.post('/status', async (req, res)=>{
     const {user} = req.headers;
     console.log('user', user);
 
-    if(!user){
+    if(!user || Number(user)){
         console.log('Para visualizar o status é necessário informar o usuário');
         res.sendStatus(422);
         return;
@@ -265,20 +274,20 @@ appServer.post('/status', async (req, res)=>{
                 const atualizarParticipante = await db.updateOne({name: user}, {$set: {lastStatus: Date.now()}});
                 console.log('atualizarParticipante', atualizarParticipante);
                 res.sendStatus(200);
-                conexaoListaParticipantes.close();
+                await conexaoListaParticipantes.close();
                 return;
             }
             if(!participante){
                 console.log('Participante não existe');
                 res.sendStatus(404);
-                conexaoListaParticipantes.close();
+                await conexaoListaParticipantes.close();
                 return;
             }
         }
         catch(err){
             console.log(err);
             res.sendStatus(500);
-            conexaoListaParticipantes.close();
+            await conexaoListaParticipantes.close();
             return;
         }
     }
@@ -288,7 +297,7 @@ appServer.delete('/messages/:id', async (req, res)=>{
     const {user} = req.headers;
     const {id} = req.params;
 
-    if(!user || !id){
+    if(!user || !id || Number(user)){
         console.log('Para deletar uma mensagem é necessário informar o usuário e o id');
         res.sendStatus(422);
         return;
@@ -307,26 +316,26 @@ appServer.delete('/messages/:id', async (req, res)=>{
                     const deletarMensagem = await db.deleteOne({_id: new ObjectId(id)});
                     console.log('deletarMensagem', deletarMensagem);
                     res.sendStatus(200);
-                    conexaoMongo.close();
+                    await conexaoMongo.close();
                     return;
                 }
                 if(mensagem.from !== user && mensagem.to !== user){
                     console.log('Usuário não tem permissão para apagar mensagem');
                     res.sendStatus(401);
-                    conexaoMongo.close();
+                    await conexaoMongo.close();
                     return;
                 }
             }
             if(!mensagem){
                 console.log('Mensagem não existe');
                 res.sendStatus(404);
-                conexaoMongo.close();
+                await conexaoMongo.close();
                 return;
             }
         } catch (error) {
             console.log(error);
             res.sendStatus(500);
-            conexaoMongo.close();
+            await conexaoMongo.close();
         }
     }
 });
@@ -368,32 +377,32 @@ setInterval( async ()=>{
                         }
                     }));
                     console.log('mensagemSaidaSala', mensagemSaidaSala);
-                    conexaoMensagens.close();
-                    conexaoListaParticipantes.close();
+                    await conexaoMensagens.close();
+                    await conexaoListaParticipantes.close();
                     return;
                 }
                 catch(err){
                     console.log(err);
-                    conexaoMensagens.close();
-                    conexaoListaParticipantes.close();
+                    await conexaoMensagens.close();
+                    await conexaoListaParticipantes.close();
                     return;
                 }
             }
             if(participantesOffline.length === 0){
                 console.log('Não há participantes offline');
-                conexaoListaParticipantes.close();
+                await conexaoListaParticipantes.close();
                 return;
             }
         }
         if(listaParticipantesAtivos.length === 0){
             console.log('Não existe participantes ativos');
-            conexaoListaParticipantes.close();
+            await conexaoListaParticipantes.close();
             return;
         }
     }
     catch(err){
         console.log(err);
-        conexaoListaParticipantes.close();
+        await conexaoListaParticipantes.close();
     }
 }, 15000);
 

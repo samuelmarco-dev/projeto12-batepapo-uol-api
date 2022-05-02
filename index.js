@@ -340,6 +340,80 @@ appServer.delete('/messages/:id', async (req, res)=>{
     }
 });
 
+appServer.put('/messages/:id', async (req, res)=>{
+    const {id} = req.params;
+    const {to, text, type} = req.body;
+    const {user} = req.headers;
+
+    const schemaAtualizarMensagem = joi.object({
+        to: joi.string().min(1).required(),
+        text : joi.string().min(1).required(),
+        type: joi.string().valid('message', 'private_message')
+    });
+    const validacao = schemaAtualizarMensagem.validate({to, text, type}, {abortEarly: false});
+
+    if(validacao.error || !user || !id){
+        console.log('Para atualizar uma mensagem é necessário informar o usuário, o id e o objeto');
+        res.sendStatus(422);
+        return;
+    }
+
+    if(user && id && validacao.value.to.length >= 1 && validacao.value.text.length >= 1){
+        console.log('Consultando mensagem a ser atualizada');
+        if(validacao.value.type === 'message' || validacao.value.type === 'private_message'){
+            const conexaoMongo = new MongoClient(process.env.MONGO_CONECTION);
+            try{
+                const conexao = await conexaoMongo.connect();
+                const db = conexao.db('API-batePapoUol').collection('participants');
+                const participante = await db.findOne({name: user});
+
+                if(participante){
+                    const dbMensagens = conexao.db('API-batePapoUol').collection('messages');
+                    const mensagem = await dbMensagens.findOne({_id: new ObjectId(id)});
+
+                    if(mensagem){
+                        if(mensagem.from === user){
+                            const atualizarMensagem = await dbMensagens.updateOne({_id: new ObjectId(id)}, {$set: req.body});
+                            console.log('atualizarMensagem', atualizarMensagem);
+                            res.sendStatus(201);
+                            await conexaoMongo.close();
+                            return;
+                        }
+                        if(mensagem.from !== user){
+                            console.log('Usuário não tem permissão para atualizar mensagem');
+                            res.sendStatus(401);
+                            await conexaoMongo.close();
+                            return;
+                        }
+                    }
+                    if(!mensagem){
+                        console.log('Mensagem não existe');
+                        res.sendStatus(404);
+                        await conexaoMongo.close();
+                        return;
+                    }
+                }
+                if(!participante){
+                    console.log('Participante não existe');
+                    res.sendStatus(422);
+                    await conexaoMongo.close();
+                    return;
+                }
+            }
+            catch(err){
+                console.log(err);
+                res.sendStatus(500);
+                await conexaoMongo.close();
+                return;
+            }
+        } else{
+            console.log('Tipo de mensagem inválido');
+            res.sendStatus(422);
+            return;
+        }
+    }
+});
+
 setInterval( async ()=>{
     const conexaoListaParticipantes = new MongoClient(process.env.MONGO_CONECTION);
     try{
